@@ -382,7 +382,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         let start = reset.addingTimeInterval(-len)
         let elapsed = now.timeIntervalSince(start)
         let remaining = reset.timeIntervalSince(now)
-        guard elapsed > 5 * 60, remaining > 0 else { return ("", .secondaryLabelColor) }
+        guard elapsed > 15 * 60, remaining > 0 else { return ("", .secondaryLabelColor) }
         if pct >= 100 { return ("limit reached · wait for reset", Self.mutedRed) }
         if pct < 1 { return ("", .secondaryLabelColor) }
 
@@ -424,9 +424,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
         let best = days.max { ($0.peak?.peak ?? -1) < ($1.peak?.peak ?? -1) }!
         var caption = "Last 7 days"
-        if let bp = best.peak {
+        if let bp = best.peak, bp.peak >= 1 {
             let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "EEE HH:mm"
             caption += " · peak \(Int(bp.peak.rounded()))% \(f.string(from: Date(timeIntervalSince1970: bp.at)))"
+        } else if samples.count < 2 {
+            caption += " · collecting…"
+        } else {
+            caption += " · no usage yet"
         }
 
         if historyExpanded {
@@ -643,8 +647,16 @@ final class HistoryChartView: NSView {
                 NSBezierPath(roundedRect: NSRect(x: x, y: chartBottom, width: colW, height: h),
                              xRadius: 2, yRadius: 2).fill()
             } else {
+                // Day without a sample: faint placeholder so the chart reads as
+                // "not collected yet" rather than "zero usage".
                 NSColor.quaternaryLabelColor.setFill()
-                NSRect(x: x, y: chartBottom, width: colW, height: 2).fill()
+                NSBezierPath(roundedRect: NSRect(x: x, y: chartBottom, width: colW, height: chartH),
+                             xRadius: 2, yRadius: 2).fill()
+                let nd = NSAttributedString(string: "no\ndata", attributes: [
+                    .font: NSFont.systemFont(ofSize: 8), .foregroundColor: NSColor.tertiaryLabelColor,
+                    .paragraphStyle: { let p = NSMutableParagraphStyle(); p.alignment = .center; return p }()])
+                let r = NSRect(x: x, y: chartBottom + chartH/2 - 10, width: colW, height: 20)
+                nd.draw(in: r)
             }
             let label = NSAttributedString(string: f.string(from: day.date), attributes: labelAttrs)
             label.draw(at: NSPoint(x: x + (colW - label.size().width) / 2, y: 3))
