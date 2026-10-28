@@ -8,7 +8,9 @@
   Native macOS menu bar app showing how much of your <b>Claude</b> (Pro/Max) and <b>ChatGPT</b> (via Codex) plan limits you've used — with reset timers, a pace forecast and 7‑day history.
 </p>
 
----
+<p align="center">
+  <img src="docs/screenshot.png" width="320" alt="Claude Usage Bar menu">
+</p>
 
 ## What you get
 
