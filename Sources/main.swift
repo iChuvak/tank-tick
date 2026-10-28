@@ -367,10 +367,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         guard let pct else { menu.addItem(disabled("\(name): —")); return }
         var sub = ""
         if let reset { sub = "resets \(relative(reset)) · \(absolute(reset))" }
-        let pace = paceLine(key: key, pct: pct, reset: reset, windowSeconds: windowSeconds)
+        let forecast = paceLine(key: key, pct: pct, reset: reset, windowSeconds: windowSeconds)
         let item = NSMenuItem(title: name, action: nil, keyEquivalent: "")
-        item.view = UsageRowView(title: name, percent: pct, subtitle: sub, pace: pace,
-                                 color: color(for: pct), paceColor: pace.1)
+        item.view = UsageRowView(title: name, percent: pct, subtitle: sub, pace: forecast,
+                                 color: color(for: pct), paceColor: forecast.1)
         item.isEnabled = false
         menu.addItem(item)
     }
