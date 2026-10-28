@@ -434,16 +434,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         if let p = codex?.rateLimit?.primaryWindow?.usedPercent { history.record("gpt5h", percent: p) }
     }
 
-    private var historyExpanded: Bool {
-        get { UserDefaults.standard.bool(forKey: "historyExpanded") }
-        set { UserDefaults.standard.set(newValue, forKey: "historyExpanded") }
-    }
-
+    /// One‑line summary of the last 7 days (daily peaks of the 5h window).
     private func addHistory(series: String) {
         let days = history.recent(series, days: 7)
         let samples = days.compactMap { $0.peak }
         guard !samples.isEmpty else { return }
-
         let best = days.max { ($0.peak?.peak ?? -1) < ($1.peak?.peak ?? -1) }!
         var caption = "Last 7 days"
         if let bp = best.peak, bp.peak >= 1 {
@@ -454,31 +449,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         } else {
             caption += " · no usage yet"
         }
-
-        if historyExpanded {
-            let item = NSMenuItem(title: caption, action: nil, keyEquivalent: "")
-            item.view = HistoryChartView(caption: caption, days: days, colorFor: { [weak self] in self?.color(for: $0) ?? .gray },
-                                         onToggle: { [weak self] in self?.toggleHistory() })
-            menu.addItem(item)   // stays enabled so the view receives clicks
-        } else {
-            let item = action("\(caption)  ›", #selector(toggleHistoryAction))
-            item.attributedTitle = NSAttributedString(
-                string: "\(caption)  ›",
-                attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
-            menu.addItem(item)
-        }
-    }
-
-    @objc private func toggleHistoryAction() { toggleHistory() }
-
-    /// Flip the setting and re‑open the menu so it feels like an in‑place expand.
-    private func toggleHistory() {
-        historyExpanded.toggle()
-        menu.cancelTracking()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            self?.rebuildMenu()
-            self?.statusItem.button?.performClick(nil)
-        }
+        let item = disabled(caption)
+        item.attributedTitle = NSAttributedString(
+            string: caption,
+            attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
+        menu.addItem(item)
     }
 
     private func header(_ text: String) -> NSMenuItem {
@@ -621,67 +596,6 @@ final class UsageRowView: NSView {
             barColor.setFill()
             NSBezierPath(roundedRect: NSRect(x: inset, y: y, width: max(fillW, barH), height: barH),
                          xRadius: barH/2, yRadius: barH/2).fill()
-        }
-    }
-}
-
-/// Seven columns, one per day: height = that day's peak of the 5‑hour window,
-/// colour by the usual thresholds. Clicking the caption collapses it again.
-final class HistoryChartView: NSView {
-    private let days: [(date: Date, peak: UsageHistory.DayPeak?)]
-    private let colorFor: (Double) -> NSColor
-    private let onToggle: () -> Void
-    private let caption: String
-    private let inset: CGFloat = 14
-
-    init(caption: String, days: [(date: Date, peak: UsageHistory.DayPeak?)],
-         colorFor: @escaping (Double) -> NSColor, onToggle: @escaping () -> Void) {
-        self.caption = caption; self.days = days; self.colorFor = colorFor; self.onToggle = onToggle
-        super.init(frame: NSRect(x: 0, y: 0, width: 280, height: 96))
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func mouseUp(with event: NSEvent) { onToggle() }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        let w = bounds.width
-        // caption
-        let cap = NSAttributedString(string: "\(caption)  ⌄",
-            attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
-        cap.draw(at: NSPoint(x: inset, y: bounds.height - 18))
-
-        // chart area
-        let chartTop = bounds.height - 24, chartBottom: CGFloat = 18, chartH = chartTop - chartBottom
-        let gap: CGFloat = 5
-        let colW = (w - 2*inset - gap * CGFloat(days.count - 1)) / CGFloat(days.count)
-        let baseline = NSRect(x: inset, y: chartBottom - 1, width: w - 2*inset, height: 1)
-        NSColor.separatorColor.setFill(); baseline.fill()
-
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "EEE"
-        let labelAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 9),
-                                                         .foregroundColor: NSColor.tertiaryLabelColor]
-        for (i, day) in days.enumerated() {
-            let x = inset + CGFloat(i) * (colW + gap)
-            if let p = day.peak {
-                let h = max(2, chartH * CGFloat(min(p.peak, 100) / 100))
-                colorFor(p.peak).setFill()
-                NSBezierPath(roundedRect: NSRect(x: x, y: chartBottom, width: colW, height: h),
-                             xRadius: 2, yRadius: 2).fill()
-            } else {
-                // Day without a sample: faint placeholder so the chart reads as
-                // "not collected yet" rather than "zero usage".
-                NSColor.quaternaryLabelColor.setFill()
-                NSBezierPath(roundedRect: NSRect(x: x, y: chartBottom, width: colW, height: chartH),
-                             xRadius: 2, yRadius: 2).fill()
-                let nd = NSAttributedString(string: "no\ndata", attributes: [
-                    .font: NSFont.systemFont(ofSize: 8), .foregroundColor: NSColor.tertiaryLabelColor,
-                    .paragraphStyle: { let p = NSMutableParagraphStyle(); p.alignment = .center; return p }()])
-                let r = NSRect(x: x, y: chartBottom + chartH/2 - 10, width: colW, height: 20)
-                nd.draw(in: r)
-            }
-            let label = NSAttributedString(string: f.string(from: day.date), attributes: labelAttrs)
-            label.draw(at: NSPoint(x: x + (colW - label.size().width) / 2, y: 3))
         }
     }
 }

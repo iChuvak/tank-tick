@@ -21,7 +21,7 @@
 - Claude: session (5h), week (all models), week · Opus, week · Sonnet, extra usage — each as a progress bar with reset countdown
 - ChatGPT · Codex: session (5h), week
 - **Forecast** under each window: *"At current pace: ~71% at reset · fits"* or *"At current pace: 100% by ~15:05 · before reset"* — consumption over the last 30 minutes extrapolated to the end of the window. Shows *"No recent usage · ~42% at reset"* when nothing was consumed lately and *"Forecast available in ~8 min"* until 15 minutes of samples exist. It extrapolates observed consumption; it does not predict what you'll do next.
-- **Last 7 days** — collapsed line with the week's peak; click to expand a bar chart of daily peaks
+- **Last 7 days** — one line with the week's peak 5‑hour usage and when it happened
 - Refresh, links to the official usage pages, launch at login
 
 **Notifications** when any window crosses 80% and 95% (once per reset window).
@@ -75,7 +75,7 @@ Sources/
   CodexAPI.swift      Codex auth.json, ChatGPT usage endpoint, token refresh
   History.swift       daily peak storage (30 days)
   PaceTracker.swift   recent-rate samples per quota window (forecast input)
-  main.swift          status item, menu, progress bars, forecast, chart, notifications
+  main.swift          status item, menu, progress bars, forecast, notifications
 icon/                 app icon source + iconset
 build.sh, Info.plist  .app bundle via swiftc, no Xcode project
 ```
