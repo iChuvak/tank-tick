@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     private var lastUpdated: Date?
     private var refreshing = false
     private let history = UsageHistory()
+    private let pace = PaceTracker()
 
     /// Both usage endpoints rate‑limit aggressively; poll conservatively and
     /// back off further after a 429.
@@ -109,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             self.lastUpdated = Date()
             self.currentInterval = hitRateLimit ? min(self.currentInterval * 2, 30 * 60) : self.normalInterval
             self.recordHistory()
+            self.recordPace()
             self.updateButton()
             self.rebuildMenuIfPossible()
             self.checkThresholds()
@@ -309,10 +311,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         // Claude section
         menu.addItem(header("Claude" + (claudePlan.map { " · \($0.capitalized)" } ?? "")))
         if let u = claude {
-            addWindow("Session (5h)", u.fiveHour?.utilization, u.fiveHour?.resetDate, windowSeconds: 5 * 3600)
-            addWindow("Week · all models", u.sevenDay?.utilization, u.sevenDay?.resetDate, windowSeconds: 7 * 86400)
-            if let o = u.sevenDayOpus, o.utilization != nil { addWindow("Week · Opus", o.utilization, o.resetDate, windowSeconds: 7 * 86400) }
-            if let s = u.sevenDaySonnet, s.utilization != nil { addWindow("Week · Sonnet", s.utilization, s.resetDate, windowSeconds: 7 * 86400) }
+            addWindow("claude5h", "Session (5h)", u.fiveHour?.utilization, u.fiveHour?.resetDate, windowSeconds: 5 * 3600)
+            addWindow("claude7d", "Week · all models", u.sevenDay?.utilization, u.sevenDay?.resetDate, windowSeconds: 7 * 86400)
+            if let o = u.sevenDayOpus, o.utilization != nil { addWindow("claude7dOpus", "Week · Opus", o.utilization, o.resetDate, windowSeconds: 7 * 86400) }
+            if let s = u.sevenDaySonnet, s.utilization != nil { addWindow("claude7dSonnet", "Week · Sonnet", s.utilization, s.resetDate, windowSeconds: 7 * 86400) }
             if let x = u.extraUsage, x.isEnabled == true {
                 let t = String(format: "Extra usage: %.2f / %.2f %@ (%d%%)",
                                x.usedCredits ?? 0, x.monthlyLimit ?? 0, x.currency ?? "USD",
@@ -330,9 +332,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         // ChatGPT / Codex section
         menu.addItem(header("ChatGPT · Codex" + (codexPlan.map { " · \($0.capitalized)" } ?? "")))
         if let r = codex?.rateLimit {
-            addWindow("Session (5h)", r.primaryWindow?.usedPercent, r.primaryWindow?.resetDate,
+            addWindow("gpt5h", "Session (5h)", r.primaryWindow?.usedPercent, r.primaryWindow?.resetDate,
                       windowSeconds: r.primaryWindow?.limitWindowSeconds ?? 5 * 3600)
-            addWindow("Week", r.secondaryWindow?.usedPercent, r.secondaryWindow?.resetDate,
+            addWindow("gpt7d", "Week", r.secondaryWindow?.usedPercent, r.secondaryWindow?.resetDate,
                       windowSeconds: r.secondaryWindow?.limitWindowSeconds ?? 7 * 86400)
             addHistory(series: "gpt5h")
         } else if codexError == nil {
@@ -361,11 +363,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
 
-    private func addWindow(_ name: String, _ pct: Double?, _ reset: Date?, windowSeconds: Double? = nil) {
+    private func addWindow(_ key: String, _ name: String, _ pct: Double?, _ reset: Date?, windowSeconds: Double? = nil) {
         guard let pct else { menu.addItem(disabled("\(name): —")); return }
         var sub = ""
         if let reset { sub = "resets \(relative(reset)) · \(absolute(reset))" }
-        let pace = paceLine(pct: pct, reset: reset, windowSeconds: windowSeconds)
+        let pace = paceLine(key: key, pct: pct, reset: reset, windowSeconds: windowSeconds)
         let item = NSMenuItem(title: name, action: nil, keyEquivalent: "")
         item.view = UsageRowView(title: name, percent: pct, subtitle: sub, pace: pace,
                                  color: color(for: pct), paceColor: pace.1)
@@ -373,36 +375,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         menu.addItem(item)
     }
 
-    /// Burn‑rate projection: given how much of the window has elapsed and how much
-    /// quota is used, estimate whether the quota runs out before the reset.
-    /// Returns (text, colour); text is empty when there's nothing meaningful to say.
-    private func paceLine(pct: Double, reset: Date?, windowSeconds: Double?) -> (String, NSColor) {
+    /// Projection from the *recent* pace (last ~30 min, see PaceTracker):
+    ///     projected = used now + recent rate × time remaining
+    /// Three states: active pace, no recent increase, not enough data yet.
+    /// Worded as "at current pace" — it extrapolates observed consumption,
+    /// it does not predict what the user will do next.
+    private func paceLine(key: String, pct: Double, reset: Date?, windowSeconds: Double?) -> (String, NSColor) {
         guard let reset, let len = windowSeconds, len > 0 else { return ("", .secondaryLabelColor) }
         let now = Date()
-        let start = reset.addingTimeInterval(-len)
-        let elapsed = now.timeIntervalSince(start)
+        let elapsed = now.timeIntervalSince(reset.addingTimeInterval(-len))
         let remaining = reset.timeIntervalSince(now)
-        guard elapsed > 15 * 60, remaining > 0 else { return ("", .secondaryLabelColor) }
-        if pct >= 100 { return ("limit reached · wait for reset", Self.mutedRed) }
-        if pct < 1 { return ("", .secondaryLabelColor) }
+        guard remaining > 0 else { return ("", .secondaryLabelColor) }
+        if pct >= 100 { return ("Limit reached · wait for reset", Self.mutedRed) }
 
-        let rate = pct / elapsed                    // % per second
-        let secondsToEmpty = (100 - pct) / rate
-        let projectedAtReset = min(pct + rate * remaining, 999)
-
-        // "Forecast" = usage expected when the window resets, extrapolating the
-        // current pace (an estimate‑at‑completion, in project‑management terms).
-        if secondsToEmpty < remaining {
-            let when = now.addingTimeInterval(secondsToEmpty)
-            let f = DateFormatter(); f.dateFormat = "HH:mm"
-            let dayPrefix = Calendar.current.isDateInToday(when) ? "" : "\(absolute(when).components(separatedBy: ",").first ?? "") "
-            return ("Forecast: 100% by ~\(dayPrefix)\(f.string(from: when)) · before reset",
-                    projectedAtReset > 130 ? Self.mutedRed : Self.mutedAmber)
-        } else {
-            let verdict = projectedAtReset > 85 ? "tight" : "fits"
-            return ("Forecast at reset: ~\(Int(projectedAtReset.rounded()))% · \(verdict)",
-                    projectedAtReset > 85 ? Self.mutedAmber : Self.mutedGreen)
+        // Keep quiet at the very start of a window even if samples span the previous cycle's tail.
+        if elapsed < PaceTracker.minimumObservation {
+            let wait = PaceTracker.minimumObservation - elapsed
+            return ("Forecast available in ~\(max(1, Int((wait / 60).rounded(.up)))) min", .secondaryLabelColor)
         }
+
+        switch pace.pace(key, now: now) {
+        case .insufficient(let secs):
+            return ("Forecast available in ~\(max(1, Int((secs / 60).rounded(.up)))) min", .secondaryLabelColor)
+
+        case .rate(let rate) where rate <= 0:
+            return ("No recent usage · ~\(Int(pct.rounded()))% at reset", .secondaryLabelColor)
+
+        case .rate(let rate):
+            let projected = min(pct + rate * remaining, 999)
+            let secondsToEmpty = (100 - pct) / rate
+            if secondsToEmpty < remaining {
+                let when = now.addingTimeInterval(secondsToEmpty)
+                let f = DateFormatter(); f.dateFormat = "HH:mm"
+                let dayPrefix = Calendar.current.isDateInToday(when) ? "" : "\(absolute(when).components(separatedBy: ",").first ?? "") "
+                return ("At current pace: 100% by ~\(dayPrefix)\(f.string(from: when)) · before reset",
+                        projected > 130 ? Self.mutedRed : Self.mutedAmber)
+            } else {
+                let verdict = projected > 85 ? "tight" : "fits"
+                return ("At current pace: ~\(Int(projected.rounded()))% at reset · \(verdict)",
+                        projected > 85 ? Self.mutedAmber : Self.mutedGreen)
+            }
+        }
+    }
+
+    private func recordPace() {
+        if let w = claude?.fiveHour, let p = w.utilization { pace.record("claude5h", percent: p, resetAt: w.resetDate) }
+        if let w = claude?.sevenDay, let p = w.utilization { pace.record("claude7d", percent: p, resetAt: w.resetDate) }
+        if let w = claude?.sevenDayOpus, let p = w.utilization { pace.record("claude7dOpus", percent: p, resetAt: w.resetDate) }
+        if let w = claude?.sevenDaySonnet, let p = w.utilization { pace.record("claude7dSonnet", percent: p, resetAt: w.resetDate) }
+        if let w = codex?.rateLimit?.primaryWindow, let p = w.usedPercent { pace.record("gpt5h", percent: p, resetAt: w.resetDate) }
+        if let w = codex?.rateLimit?.secondaryWindow, let p = w.usedPercent { pace.record("gpt7d", percent: p, resetAt: w.resetDate) }
     }
 
     // MARK: - History
