@@ -1,7 +1,7 @@
 import Foundation
 
 /// Daily peaks of each usage window, kept locally for 30 days.
-/// File: ~/Library/Application Support/ClaudeUsageBar/history.json
+/// File: ~/Library/Application Support/TankTick/history.json
 /// Shape: { "claude5h": { "2026-10-29": { "peak": 61.0, "at": 1761734400 } }, "gpt5h": { ... } }
 final class UsageHistory {
     struct DayPeak: Codable { var peak: Double; var at: TimeInterval }
@@ -17,7 +17,7 @@ final class UsageHistory {
 
     init() {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("ClaudeUsageBar", isDirectory: true)
+            .appendingPathComponent("TankTick", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         url = base.appendingPathComponent("history.json")
         if let d = try? Data(contentsOf: url),

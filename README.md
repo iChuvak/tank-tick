@@ -1,15 +1,15 @@
 <p align="center">
-  <img src="docs/icon.png" width="128" alt="Claude Usage Bar icon">
+  <img src="docs/icon.png" width="128" alt="Tank Tick icon">
 </p>
 
-<h1 align="center">Claude Usage Bar</h1>
+<h1 align="center">Tank Tick</h1>
 
 <p align="center">
-  Native macOS menu bar app showing how much of your <b>Claude</b> (Pro/Max) and <b>ChatGPT</b> (via Codex) plan limits you've used — with reset timers, a pace forecast and 7‑day history.
+  How much is left in the tank? A native macOS menu bar app showing your <b>Claude</b> (Pro/Max) and <b>ChatGPT</b> (via Codex) plan limits — with reset timers, a pace forecast and 7‑day history.
 </p>
 
 <p align="center">
-  <img src="docs/screenshot.png" width="320" alt="Claude Usage Bar menu">
+  <img src="docs/screenshot.png" width="320" alt="Tank Tick menu">
 </p>
 
 ## What you get
@@ -34,11 +34,11 @@ Requirements: macOS 12+ (launch at login needs 13+), Xcode Command Line Tools (`
 - [Codex CLI](https://github.com/openai/codex) signed in with your ChatGPT account (`codex login`)
 
 ```bash
-git clone https://github.com/iChuvak/claude-usage-bar.git
-cd claude-usage-bar
+git clone https://github.com/iChuvak/tank-tick.git
+cd tank-tick
 ./build.sh
-cp -R build/ClaudeUsageBar.app /Applications/
-open /Applications/ClaudeUsageBar.app
+cp -R build/TankTick.app /Applications/
+open /Applications/TankTick.app
 ```
 
 On first launch:
@@ -58,7 +58,7 @@ The app does not have its own login. It reuses the OAuth sessions the official C
 | Claude | Keychain item `Claude Code-credentials` (fallback `~/.claude/.credentials.json`) | `api.anthropic.com/api/oauth/usage` |
 | ChatGPT | `~/.codex/auth.json` (or `$CODEX_HOME/auth.json`) | `chatgpt.com/backend-api/wham/usage` |
 
-Tokens are only ever sent to Anthropic / OpenAI hosts. Nothing is sent anywhere else; history is a local JSON file in `~/Library/Application Support/ClaudeUsageBar/`.
+Tokens are only ever sent to Anthropic / OpenAI hosts. Nothing is sent anywhere else; history is a local JSON file in `~/Library/Application Support/TankTick/`.
 
 **Token refresh.** When an access token has expired (or the API answers 401), the app refreshes it with the CLI's own OAuth client — the same flow `claude` / `codex` run themselves — and writes the result back (Keychain / `auth.json`) so the CLI keeps working. If the refresh token itself has been revoked, the menu says so and you sign in again in the CLI.
 

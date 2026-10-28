@@ -94,7 +94,7 @@ enum UsageAPI {
         req.setValue("Bearer \(creds.accessToken)", forHTTPHeaderField: "Authorization")
         req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("ClaudeUsageBar/1.0", forHTTPHeaderField: "User-Agent")
+        req.setValue("TankTick/1.2", forHTTPHeaderField: "User-Agent")
 
         URLSession.shared.dataTask(with: req) { data, resp, err in
             if let err { completion(.failure(UsageError.network(err.localizedDescription))); return }

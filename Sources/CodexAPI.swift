@@ -142,7 +142,7 @@ enum CodexAPI {
         var req = URLRequest(url: endpoint, timeoutInterval: 20)
         req.setValue("Bearer \(creds.accessToken)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.setValue("ClaudeUsageBar/1.0", forHTTPHeaderField: "User-Agent")
+        req.setValue("TankTick/1.2", forHTTPHeaderField: "User-Agent")
         if let id = creds.accountId, !id.isEmpty {
             req.setValue(id, forHTTPHeaderField: "ChatGPT-Account-Id")
         }

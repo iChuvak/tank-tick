@@ -1,10 +1,10 @@
 #!/bin/bash
-# Builds ClaudeUsageBar.app in one go. Requires Xcode Command Line Tools:
+# Builds TankTick.app in one go. Requires Xcode Command Line Tools:
 #   xcode-select --install
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP="ClaudeUsageBar"
+APP="TankTick"
 OUT="build/$APP.app"
 rm -rf build
 mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources"
