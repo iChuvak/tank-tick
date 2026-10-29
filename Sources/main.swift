@@ -547,7 +547,9 @@ final class UsageRowView: NSView {
     private let pctLabel = NSTextField(labelWithString: "")
     private let subLabel = NSTextField(labelWithString: "")
     private let paceLabel = NSTextField(labelWithString: "")
-    private let barH: CGFloat = 6, inset: CGFloat = 14
+    /// Match the text inset of standard NSMenuItems (checkmark column) so custom
+    /// rows line up with the headers and actions around them.
+    private let barH: CGFloat = 6, inset: CGFloat = 27, rightInset: CGFloat = 18
     private var barY: CGFloat = 10
 
     init(title: String, percent: Double, subtitle: String, pace: (String, NSColor) = ("", .clear),
@@ -556,7 +558,7 @@ final class UsageRowView: NSView {
         self.barColor = color
         let hasSub = !subtitle.isEmpty, hasPace = !pace.0.isEmpty
         let height: CGFloat = 44 + (hasSub ? 14 : 0) + (hasPace ? 14 : 0)
-        super.init(frame: NSRect(x: 0, y: 0, width: 280, height: height))
+        super.init(frame: NSRect(x: 0, y: 0, width: 300, height: height))
 
         paceLabel.stringValue = pace.0
         paceLabel.font = NSFont.systemFont(ofSize: 11, weight: .medium)
@@ -577,12 +579,12 @@ final class UsageRowView: NSView {
 
         for l in [titleLabel, pctLabel, subLabel, paceLabel] { addSubview(l) }
         let w = bounds.width, h = bounds.height
-        titleLabel.frame = NSRect(x: inset, y: h - 22, width: w - 2*inset - 50, height: 18)
-        pctLabel.frame   = NSRect(x: w - inset - 50, y: h - 22, width: 50, height: 18)
+        titleLabel.frame = NSRect(x: inset, y: h - 22, width: w - inset - rightInset - 50, height: 18)
+        pctLabel.frame   = NSRect(x: w - rightInset - 50, y: h - 22, width: 50, height: 18)
         // Stack from the bottom: pace line, then reset line, then the bar.
         var y: CGFloat = 4
-        if hasPace { paceLabel.frame = NSRect(x: inset, y: y, width: w - 2*inset, height: 15); y += 14 }
-        if hasSub  { subLabel.frame  = NSRect(x: inset, y: y, width: w - 2*inset, height: 15); y += 14 }
+        if hasPace { paceLabel.frame = NSRect(x: inset, y: y, width: w - inset - rightInset, height: 15); y += 14 }
+        if hasSub  { subLabel.frame  = NSRect(x: inset, y: y, width: w - inset - rightInset, height: 15); y += 14 }
         subLabel.isHidden = !hasSub
         barY = y + 6
     }
@@ -590,7 +592,7 @@ final class UsageRowView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let trackW = bounds.width - 2*inset
+        let trackW = bounds.width - inset - rightInset
         let y = barY
         let track = NSRect(x: inset, y: y, width: trackW, height: barH)
         NSColor.quaternaryLabelColor.setFill()
