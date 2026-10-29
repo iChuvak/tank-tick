@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         statusItem.button?.imagePosition = .imageOnly
         statusItem.button?.image = stackedImage(top: nil, bottom: nil)
         menu.delegate = self
+        menu.showsStateColumn = false   // no checkmark column: everything sits closer to the edge
         statusItem.menu = menu
         rebuildMenu()
 
@@ -354,9 +355,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         menu.addItem(action("Open ChatGPT usage page", #selector(openChatGPTUsage)))
 
         if #available(macOS 13.0, *) {
-            let login = action("Launch at login", #selector(toggleLogin))
-            login.state = SMAppService.mainApp.status == .enabled ? .on : .off
-            menu.addItem(login)
+            let on = SMAppService.mainApp.status == .enabled
+            menu.addItem(action("Launch at login · \(on ? "on" : "off")", #selector(toggleLogin)))
         }
 
         menu.addItem(.separator())
@@ -549,7 +549,7 @@ final class UsageRowView: NSView {
     private let paceLabel = NSTextField(labelWithString: "")
     /// Match the text inset of standard NSMenuItems (checkmark column) so custom
     /// rows line up with the headers and actions around them.
-    private let barH: CGFloat = 6, inset: CGFloat = 27, rightInset: CGFloat = 18
+    private let barH: CGFloat = 6, inset: CGFloat = 14, rightInset: CGFloat = 14
     private var barY: CGFloat = 10
 
     init(title: String, percent: Double, subtitle: String, pace: (String, NSColor) = ("", .clear),
