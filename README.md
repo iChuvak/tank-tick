@@ -20,7 +20,7 @@
 
 - Claude: session (5h), week (all models), week · Opus, week · Sonnet, extra usage — each as a progress bar with reset countdown
 - ChatGPT · Codex: session (5h), week
-- **Forecast** under each window: *"At current pace: ~71% at reset · fits"* or *"At current pace: 100% by ~15:05 · before reset"* — consumption over the last 30 minutes extrapolated to the end of the window. Shows *"No recent usage · ~42% at reset"* when nothing was consumed lately and *"Forecast available in ~8 min"* until 15 minutes of samples exist. It extrapolates observed consumption; it does not predict what you'll do next.
+- **Forecast** under each window: *"At current pace: ~71% at reset · fits"* or *"At current pace: 100% by ~15:05"* — recent consumption extrapolated to the end of the window. "Recent" scales with the window: the last 30 minutes for a 5‑hour window, the last 6 hours for a weekly one (so one busy half hour doesn't predict a blown week). Shows *"No recent usage · ~42% at reset"* when nothing was consumed lately and *"Forecast available in ~8 min"* until enough samples exist (15 min for 5h windows, 3 h for weekly). It extrapolates observed consumption; it does not predict what you'll do next.
 - **Last 7 days** — one line with the week's peak 5‑hour usage and when it happened
 - Refresh, links to the official usage pages, launch at login
 

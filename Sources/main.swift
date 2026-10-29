@@ -388,15 +388,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         guard remaining > 0 else { return ("", .secondaryLabelColor) }
         if pct >= 100 { return ("Limit reached · wait for reset", Self.mutedRed) }
 
-        // Keep quiet at the very start of a window even if samples span the previous cycle's tail.
-        if elapsed < PaceTracker.minimumObservation {
-            let wait = PaceTracker.minimumObservation - elapsed
-            return ("Forecast available in ~\(max(1, Int((wait / 60).rounded(.up)))) min", .secondaryLabelColor)
+        func waitText(_ secs: TimeInterval) -> String {
+            let m = max(1, Int((secs / 60).rounded(.up)))
+            return m >= 60 ? "Forecast available in ~\(m / 60)h \(m % 60)m" : "Forecast available in ~\(m) min"
         }
+        // Keep quiet at the very start of a window even if samples span the previous cycle's tail.
+        let minimum = PaceTracker.minimumObservation(windowSeconds: len)
+        if elapsed < minimum { return (waitText(minimum - elapsed), .secondaryLabelColor) }
 
-        switch pace.pace(key, now: now) {
+        switch pace.pace(key, windowSeconds: len, now: now) {
         case .insufficient(let secs):
-            return ("Forecast available in ~\(max(1, Int((secs / 60).rounded(.up)))) min", .secondaryLabelColor)
+            return (waitText(secs), .secondaryLabelColor)
 
         case .rate(let rate) where rate <= 0:
             return ("No recent usage · ~\(Int(pct.rounded()))% at reset", .secondaryLabelColor)
@@ -406,9 +408,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             let secondsToEmpty = (100 - pct) / rate
             if secondsToEmpty < remaining {
                 let when = now.addingTimeInterval(secondsToEmpty)
-                let f = DateFormatter(); f.dateFormat = "HH:mm"
-                let dayPrefix = Calendar.current.isDateInToday(when) ? "" : "\(absolute(when).components(separatedBy: ",").first ?? "") "
-                return ("At current pace: 100% by ~\(dayPrefix)\(f.string(from: when)) · before reset",
+                let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
+                f.dateFormat = Calendar.current.isDateInToday(when) ? "HH:mm" : "EEE HH:mm"
+                return ("At current pace: 100% by ~\(f.string(from: when))",
                         projected > 130 ? Self.mutedRed : Self.mutedAmber)
             } else {
                 let verdict = projected > 85 ? "tight" : "fits"
@@ -559,6 +561,7 @@ final class UsageRowView: NSView {
         paceLabel.stringValue = pace.0
         paceLabel.font = NSFont.systemFont(ofSize: 11, weight: .medium)
         paceLabel.textColor = paceColor
+        paceLabel.lineBreakMode = .byTruncatingTail
         paceLabel.isHidden = !hasPace
 
         titleLabel.stringValue = title
@@ -570,6 +573,7 @@ final class UsageRowView: NSView {
         subLabel.stringValue = subtitle
         subLabel.font = NSFont.systemFont(ofSize: 11)
         subLabel.textColor = .secondaryLabelColor
+        subLabel.lineBreakMode = .byTruncatingTail
 
         for l in [titleLabel, pctLabel, subLabel, paceLabel] { addSubview(l) }
         let w = bounds.width, h = bounds.height

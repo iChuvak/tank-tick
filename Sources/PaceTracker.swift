@@ -20,10 +20,17 @@ final class PaceTracker {
         case insufficient(secondsUntilReady: TimeInterval)
     }
 
-    static let lookback: TimeInterval = 30 * 60
-    static let minimumObservation: TimeInterval = 15 * 60
+    /// Lookback scales with the window so a weekly quota isn't driven by one
+    /// busy half hour: window/10, clamped to 30 min … 6 h. Minimum observed
+    /// time before a rate is reported is half the lookback.
+    static func lookback(windowSeconds: TimeInterval) -> TimeInterval {
+        min(max(windowSeconds / 10, 30 * 60), 6 * 60 * 60)
+    }
+    static func minimumObservation(windowSeconds: TimeInterval) -> TimeInterval {
+        lookback(windowSeconds: windowSeconds) / 2
+    }
     static let maxGap: TimeInterval = 20 * 60
-    private let retention: TimeInterval = 2 * 60 * 60
+    private let retention: TimeInterval = 13 * 60 * 60
 
     private var series: [String: [Sample]] = [:]
 
@@ -39,18 +46,20 @@ final class PaceTracker {
         series[key] = s
     }
 
-    func pace(_ key: String, now: Date = Date()) -> Pace {
+    func pace(_ key: String, windowSeconds: TimeInterval, now: Date = Date()) -> Pace {
+        let lookback = Self.lookback(windowSeconds: windowSeconds)
+        let minimum = Self.minimumObservation(windowSeconds: windowSeconds)
         guard let s = series[key], let latest = s.last else {
-            return .insufficient(secondsUntilReady: Self.minimumObservation)
+            return .insufficient(secondsUntilReady: minimum)
         }
         // Oldest sample inside the lookback window is the reference point.
-        let inWindow = s.filter { now.timeIntervalSince($0.t) <= Self.lookback }
+        let inWindow = s.filter { now.timeIntervalSince($0.t) <= lookback }
         guard let ref = inWindow.first else {
-            return .insufficient(secondsUntilReady: Self.minimumObservation)
+            return .insufficient(secondsUntilReady: minimum)
         }
         let observed = latest.t.timeIntervalSince(ref.t)
-        guard observed >= Self.minimumObservation else {
-            return .insufficient(secondsUntilReady: Self.minimumObservation - observed)
+        guard observed >= minimum else {
+            return .insufficient(secondsUntilReady: minimum - observed)
         }
         let delta = max(0, latest.pct - ref.pct)
         return .rate(delta / observed)
