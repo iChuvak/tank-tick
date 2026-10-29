@@ -58,7 +58,7 @@ The app does not have its own login. It reuses the OAuth sessions the official C
 | Claude | Keychain item `Claude Code-credentials` (fallback `~/.claude/.credentials.json`) | `api.anthropic.com/api/oauth/usage` |
 | ChatGPT | `~/.codex/auth.json` (or `$CODEX_HOME/auth.json`) | `chatgpt.com/backend-api/wham/usage` |
 
-Tokens are only ever sent to Anthropic / OpenAI hosts. Nothing is sent anywhere else; history is a local JSON file in `~/Library/Application Support/TankTick/`.
+Tokens are only ever sent to Anthropic / OpenAI hosts. Nothing is sent anywhere else; history and recent pace samples are local JSON files in `~/Library/Application Support/TankTick/`.
 
 **Token refresh.** When an access token has expired (or the API answers 401), the app refreshes it with the CLI's own OAuth client — the same flow `claude` / `codex` run themselves — and writes the result back (Keychain / `auth.json`) so the CLI keeps working. If the refresh token itself has been revoked, the menu says so and you sign in again in the CLI.
 
@@ -74,7 +74,7 @@ Sources/
   UsageAPI.swift      Anthropic usage endpoint, token refresh
   CodexAPI.swift      Codex auth.json, ChatGPT usage endpoint, token refresh
   History.swift       daily peak storage (30 days)
-  PaceTracker.swift   recent-rate samples per quota window (forecast input)
+  PaceTracker.swift   recent-rate samples per quota window, persisted (forecast input)
   main.swift          status item, menu, progress bars, forecast, notifications
 icon/                 app icon source + iconset
 build.sh, Info.plist  .app bundle via swiftc, no Xcode project
