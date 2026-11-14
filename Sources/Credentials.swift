@@ -19,11 +19,13 @@ struct Credentials {
 enum CredentialsError: LocalizedError {
     case notFound
     case malformed
+    case sessionExpired
 
     var errorDescription: String? {
         switch self {
         case .notFound:   return "Claude Code is not logged in. Run `claude` and sign in."
         case .malformed:  return "Claude Code login unreadable. Run `claude` and sign in again."
+        case .sessionExpired: return "Claude Code session expired. Run `claude`, then /login."
         }
     }
 }
@@ -82,9 +84,17 @@ enum CredentialsReader {
 
     private static func parse(_ data: Data) throws -> Credentials {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let oauth = root["claudeAiOauth"] as? [String: Any],
-              let token = oauth["accessToken"] as? String, !token.isEmpty
+              let oauth = root["claudeAiOauth"] as? [String: Any]
         else { throw CredentialsError.malformed }
+        // The record is intact but the session is gone: Claude Code blanks the
+        // access token when its refresh fails, and newer builds also store
+        // refreshTokenExpiresAt. Either way only `/login` in Claude Code helps.
+        if let rtExp = oauth["refreshTokenExpiresAt"] as? Double,
+           Date(timeIntervalSince1970: rtExp / 1000) <= Date() {
+            throw CredentialsError.sessionExpired
+        }
+        guard let token = oauth["accessToken"] as? String, !token.isEmpty
+        else { throw CredentialsError.sessionExpired }
 
         var expires: Date? = nil
         if let ms = oauth["expiresAt"] as? Double {
