@@ -12,11 +12,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     // Claude
     private var claude: UsageResponse?
     private var claudeError: String?
+    private var claudeAt: Date?
     private var claudePlan: String?
 
     // Codex / ChatGPT
     private var codex: CodexUsageResponse?
     private var codexError: String?
+    private var codexAt: Date?
     private var codexPlan: String?
     private var codexLoggedIn = true
 
@@ -79,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         fetchClaude(allowRefresh: true) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
-                case .success(let u): self?.claude = u; self?.claudeError = nil
+                case .success(let u): self?.claude = u; self?.claudeError = nil; self?.claudeAt = Date()
                 case .failure(let e):
                     if case UsageError.rateLimited = e { hitRateLimit = true }
                     self?.claudeError = e.localizedDescription
@@ -94,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             DispatchQueue.main.async {
                 switch result {
                 case .success(let u):
-                    self?.codex = u; self?.codexError = nil; self?.codexLoggedIn = true
+                    self?.codex = u; self?.codexError = nil; self?.codexLoggedIn = true; self?.codexAt = Date()
                     if let p = u.planType { self?.codexPlan = p }
                 case .failure(let e):
                     if case UsageError.rateLimited = e { hitRateLimit = true }
@@ -119,33 +121,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         }
     }
 
+    /// Read‑only: the app never refreshes or rewrites Claude Code's credential.
+    /// Writing the Keychain item back (to persist a refreshed token) can leave
+    /// Claude Code itself unable to sign in — a rotated refresh token, or an
+    /// item rewritten under a different ACL/account. Claude Code refreshes its
+    /// own token whenever it runs; we just pick up whatever it stored.
     private func fetchClaude(allowRefresh: Bool, completion: @escaping (Result<UsageResponse, Error>) -> Void) {
         let creds: Credentials
         do { creds = try CredentialsReader.load() } catch { completion(.failure(error)); return }
         claudePlan = creds.subscriptionType
-
-        func run(_ c: Credentials, retryOn401: Bool) {
-            UsageAPI.fetch(creds: c) { result in
-                if retryOn401, case .failure(let e) = result, case UsageError.tokenExpired = e {
-                    ClaudeOAuth.refresh(c) { r in
-                        switch r {
-                        case .success(let fresh): run(fresh, retryOn401: false)
-                        case .failure(let err): completion(.failure(err))
-                        }
-                    }
-                } else { completion(result) }
-            }
-        }
-
-        if creds.isExpired && allowRefresh {
-            ClaudeOAuth.refresh(creds) { r in
-                switch r {
-                case .success(let fresh): run(fresh, retryOn401: false)
-                case .failure(let err): completion(.failure(err))
-                }
-            }
-        } else {
-            run(creds, retryOn401: allowRefresh)
+        if creds.isExpired { completion(.failure(UsageError.claudeTokenExpired)); return }
+        UsageAPI.fetch(creds: creds) { result in
+            if case .failure(let e) = result, case UsageError.tokenExpired = e {
+                completion(.failure(UsageError.claudeTokenExpired))
+            } else { completion(result) }
         }
     }
 
@@ -282,8 +271,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
     private func updateButton() {
         guard let button = statusItem.button else { return }
-        let claude5h = claude?.fiveHour?.utilization
-        let gpt5h = codex?.rateLimit?.primaryWindow?.usedPercent
+        let claude5h = isStale(claudeAt) ? nil : live(claude?.fiveHour?.utilization, claude?.fiveHour?.resetDate)
+        let gpt5h = isStale(codexAt) ? nil : live(codex?.rateLimit?.primaryWindow?.usedPercent,
+                                                  codex?.rateLimit?.primaryWindow?.resetDate)
         button.image = stackedImage(top: claude5h, bottom: gpt5h)
 
         func describe(_ pct: Double?, _ reset: Date?) -> String {
@@ -310,7 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         menu.removeAllItems()
 
         // Claude section
-        menu.addItem(header("Claude" + (claudePlan.map { " · \($0.capitalized)" } ?? "")))
+        menu.addItem(header("Claude" + (claudePlan.map { " · \($0.capitalized)" } ?? "") + staleNote(claudeAt)))
         if let u = claude {
             addWindow("claude5h", "Session (5h)", u.fiveHour?.utilization, u.fiveHour?.resetDate, windowSeconds: 5 * 3600)
             addWindow("claude7d", "Week · all models", u.sevenDay?.utilization, u.sevenDay?.resetDate, windowSeconds: 7 * 86400)
@@ -331,7 +321,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         menu.addItem(.separator())
 
         // ChatGPT / Codex section
-        menu.addItem(header("ChatGPT · Codex" + (codexPlan.map { " · \($0.capitalized)" } ?? "")))
+        menu.addItem(header("ChatGPT · Codex" + (codexPlan.map { " · \($0.capitalized)" } ?? "") + staleNote(codexAt)))
         if let r = codex?.rateLimit {
             addWindow("gpt5h", "Session (5h)", r.primaryWindow?.usedPercent, r.primaryWindow?.resetDate,
                       windowSeconds: r.primaryWindow?.limitWindowSeconds ?? 5 * 3600)
@@ -363,8 +353,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
 
+    // MARK: - Staleness
+
+    /// Data older than this is not presented as current.
+    private let staleAfter: TimeInterval = 15 * 60
+
+    private func isStale(_ at: Date?) -> Bool {
+        guard let at else { return true }
+        return Date().timeIntervalSince(at) > staleAfter
+    }
+
+    /// nil once the window has reset — the old percentage no longer applies.
+    private func live(_ pct: Double?, _ reset: Date?) -> Double? {
+        if let reset, reset <= Date() { return nil }
+        return pct
+    }
+
+    private func staleNote(_ at: Date?) -> String {
+        guard let at, isStale(at) else { return "" }
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = Calendar.current.isDateInToday(at) ? "HH:mm" : "EEE HH:mm"
+        return " · data from \(f.string(from: at))"
+    }
+
     private func addWindow(_ key: String, _ name: String, _ pct: Double?, _ reset: Date?, windowSeconds: Double? = nil) {
         guard let pct else { menu.addItem(disabled("\(name): —")); return }
+        if let reset, reset <= Date() {
+            menu.addItem(disabled("\(name): window reset · waiting for new data")); return
+        }
         var sub = ""
         if let reset { sub = "resets \(relative(reset)) · \(absolute(reset))" }
         let forecast = paceLine(key: key, pct: pct, reset: reset, windowSeconds: windowSeconds)

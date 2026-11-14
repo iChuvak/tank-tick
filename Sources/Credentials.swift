@@ -19,60 +19,45 @@ struct Credentials {
 enum CredentialsError: LocalizedError {
     case notFound
     case malformed
-    case saveFailed
 
     var errorDescription: String? {
         switch self {
         case .notFound:   return "Claude Code is not logged in. Run `claude` and sign in."
-        case .malformed:  return "Could not parse Claude Code credentials."
-        case .saveFailed: return "Could not save the refreshed Claude token to Keychain."
+        case .malformed:  return "Claude Code login unreadable. Run `claude` and sign in again."
         }
     }
 }
 
-/// Reads (and writes back) the OAuth session that Claude Code stores after login.
+/// Reads (never writes) the OAuth session that Claude Code stores after login.
 /// Primary: macOS Keychain item "Claude Code-credentials". Fallback: ~/.claude/.credentials.json.
 enum CredentialsReader {
     static let service = "Claude Code-credentials"
-    private static var loadedFromFile = false
 
     static func load() throws -> Credentials {
         if let data = readKeychain() {
-            loadedFromFile = false
             return try parse(data)
         }
         if let data = readFile() {
-            loadedFromFile = true
             return try parse(data)
         }
         throw CredentialsError.notFound
     }
 
-    /// Persist refreshed tokens where they came from, keeping every other field intact.
-    static func save(_ creds: Credentials, accessToken: String, refreshToken: String?, expiresAt: Date?) throws {
-        var oauth = creds.raw
-        oauth["accessToken"] = accessToken
-        if let refreshToken { oauth["refreshToken"] = refreshToken }
-        if let expiresAt { oauth["expiresAt"] = Int(expiresAt.timeIntervalSince1970 * 1000) }
-        var root = creds.rootRaw
-        root["claudeAiOauth"] = oauth
-        let data = try JSONSerialization.data(withJSONObject: root, options: [])
-
-        if loadedFromFile {
-            let url = fileURL()
-            try data.write(to: url, options: [.atomic])
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-        } else {
-            guard writeKeychain(data) else { throw CredentialsError.saveFailed }
-        }
-    }
-
     // MARK: Keychain via /usr/bin/security (survives Claude Code's own ACL rewrites)
 
+    /// Claude Code stores the item under the login user's account name. If more
+    /// than one item with this service exists, the account pins the right one;
+    /// fall back to any account for older setups.
     private static func readKeychain() -> Data? {
+        readKeychain(account: NSUserName()) ?? readKeychain(account: nil)
+    }
+
+    private static func readKeychain(account: String?) -> Data? {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        proc.arguments = ["find-generic-password", "-s", service, "-w"]
+        var args = ["find-generic-password", "-s", service]
+        if let account { args += ["-a", account] }
+        proc.arguments = args + ["-w"]
         let out = Pipe()
         proc.standardOutput = out
         proc.standardError = Pipe()
@@ -85,25 +70,6 @@ enum CredentialsReader {
             return str.data(using: .utf8)
         }
         return nil
-    }
-
-    /// `security -i` reads commands from stdin so the secret never appears in `ps`.
-    private static func writeKeychain(_ data: Data) -> Bool {
-        guard let json = String(data: data, encoding: .utf8), !json.contains("'") else { return false }
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        proc.arguments = ["-i"]
-        let input = Pipe()
-        proc.standardInput = input
-        proc.standardOutput = FileHandle.nullDevice
-        proc.standardError = FileHandle.nullDevice
-        do { try proc.run() } catch { return false }
-        let account = NSUserName()
-        let line = "add-generic-password -U -s '\(service)' -a '\(account)' -w '\(json)'\n"
-        input.fileHandleForWriting.write(Data(line.utf8))
-        try? input.fileHandleForWriting.close()
-        proc.waitUntilExit()
-        return proc.terminationStatus == 0
     }
 
     // MARK: File fallback

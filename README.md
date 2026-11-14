@@ -60,7 +60,7 @@ The app does not have its own login. It reuses the OAuth sessions the official C
 
 Tokens are only ever sent to Anthropic / OpenAI hosts. Nothing is sent anywhere else; history and recent pace samples are local JSON files in `~/Library/Application Support/TankTick/`.
 
-**Token refresh.** When an access token has expired (or the API answers 401), the app refreshes it with the CLI's own OAuth client — the same flow `claude` / `codex` run themselves — and writes the result back (Keychain / `auth.json`) so the CLI keeps working. If the refresh token itself has been revoked, the menu says so and you sign in again in the CLI.
+**Token refresh.** The app never writes Claude Code's credential: it only reads it, and Claude Code refreshes its own token whenever you use it. If the token has expired the menu says so — run `claude` once. For Codex, an expired access token is refreshed with the CLI's own OAuth client and written back to `auth.json`. If data can't be refreshed, the section header shows *"data from HH:MM"* and the menu bar number turns into a dash after 15 minutes, so stale numbers never pass as current.
 
 **Polling.** Every 5 minutes, doubling up to 30 minutes after a 429; also on menu open (if data is older than a minute) and right after waking from sleep. The usage endpoints rate‑limit aggressively, so the app stays conservative.
 
@@ -70,8 +70,8 @@ Tokens are only ever sent to Anthropic / OpenAI hosts. Nothing is sent anywhere 
 
 ```
 Sources/
-  Credentials.swift   Claude Code token: Keychain read/write
-  UsageAPI.swift      Anthropic usage endpoint, token refresh
+  Credentials.swift   Claude Code token: Keychain read (read-only)
+  UsageAPI.swift      Anthropic usage endpoint
   CodexAPI.swift      Codex auth.json, ChatGPT usage endpoint, token refresh
   History.swift       daily peak storage (30 days)
   PaceTracker.swift   recent-rate samples per quota window, persisted (forecast input)
